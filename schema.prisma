@@ -1,0 +1,432 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                   String   @id @default(cuid())
+  email                String   @unique
+  phone                String?  @unique
+  name                 String?
+  password             String   // Added password field
+  avatar               String?
+  emailVerified        Boolean  @default(false)
+  phoneVerified        Boolean  @default(false)
+  priceRange           String?  // low, medium, high
+  searchRadius         Int      @default(10) // in kilometers
+  locationLat          Float?
+  locationLng          Float?
+  onboardingCompleted  Boolean  @default(false)
+  subscriptionTier     String   @default("free") // free, plus, gold, platinum
+  role                 String   @default("user") // user, restaurant_owner, admin
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  
+  // Relations
+  swipeActions         SwipeAction[]
+  matchesAsUser1       Match[]  @relation("User1Matches")
+  matchesAsUser2       Match[]  @relation("User2Matches")
+  reviews              Review[]
+  preferences          UserPreference[]
+  dietaryRestrictions  DietaryRestriction[]
+  allergies            Allergy[]
+  favoriteCuisines     FavoriteCuisine[]
+  ownedRestaurants     Restaurant[] @relation("RestaurantOwner")
+  
+  // New relations for ordering, reservations, and chat
+  orders               Order[]       @relation("UserOrders")
+  reservations         Reservation[] @relation("UserReservations")
+  messages             Message[]     @relation("UserMessages")
+  chatRoomsAsUser1     ChatRoom[]    @relation("User1Chats")
+  chatRoomsAsUser2     ChatRoom[]    @relation("User2Chats")
+  
+  // New relations for referral and marketing
+  referralCodes        ReferralCode[] @relation("ReferrerCodes")
+  coupons              Coupon[]      @relation("UserCoupons")
+  shareActions         ShareAction[] @relation("UserShares")
+  
+  @@map("users")
+}
+
+model SwipeAction {
+  id           String   @id @default(cuid())
+  userId       String
+  dishId       String
+  restaurantId String?
+  action       String   // like, pass, super_like
+  createdAt    DateTime @default(now())
+  
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dish         Dish     @relation(fields: [dishId], references: [id])
+  restaurant   Restaurant? @relation(fields: [restaurantId], references: [id])
+  
+  @@map("swipe_actions")
+}
+
+model Match {
+  id         String   @id @default(cuid())
+  userId1    String
+  userId2    String
+  dishId     String
+  createdAt  DateTime @default(now())
+  
+  user1      User     @relation("User1Matches", fields: [userId1], references: [id])
+  user2      User     @relation("User2Matches", fields: [userId2], references: [id])
+  dish       Dish     @relation(fields: [dishId], references: [id])
+  
+  @@map("matches")
+}
+
+model Dish {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  image       String
+  price       Float
+  cuisine     String
+  restaurantId String
+  isActive    Boolean  @default(true)
+  isAvailable Boolean  @default(true)
+  allergens   String?  // JSON string of allergen array
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  restaurant  Restaurant @relation(fields: [restaurantId], references: [id])
+  swipeActions SwipeAction[]
+  matches     Match[]
+  reviews     Review[]
+  dishDietaryTags DishDietaryTag[]
+  dishIngredients DishIngredient[]
+  
+  // New relations for ordering
+  orderItems  OrderItem[]
+  orders      Order[]     @relation("DishOrders")
+  
+  // New relations for sharing
+  shareActions ShareAction[] @relation("SharedDishes")
+  
+  @@map("dishes")
+}
+
+model Restaurant {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  image       String?
+  address     String
+  lat         Float
+  lng         Float
+  phone       String?
+  website     String?
+  email       String?
+  priceRange  String   // low, medium, high
+  isActive    Boolean  @default(true)
+  ownerId     String?  // Restaurant owner user ID
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  dishes      Dish[]
+  swipeActions SwipeAction[]
+  restaurantCuisines RestaurantCuisine[]
+  owner       User?    @relation("RestaurantOwner", fields: [ownerId], references: [id])
+  
+  // New relations for ordering, reservations, and chat
+  orders      Order[]       @relation("RestaurantOrders")
+  reservations Reservation[] @relation("RestaurantReservations")
+  chatRooms   ChatRoom[]
+  
+  // New relations for sharing
+  shareActions ShareAction[] @relation("SharedRestaurants")
+  
+  @@map("restaurants")
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  userId    String
+  dishId    String?
+  rating    Int      // 1-5
+  comment   String?
+  createdAt DateTime @default(now())
+  
+  user      User     @relation(fields: [userId], references: [id])
+  dish      Dish?    @relation(fields: [dishId], references: [id])
+  
+  @@map("reviews")
+}
+
+model UserPreference {
+  id     String @id @default(cuid())
+  userId String
+  key    String
+  value  String
+  
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("user_preferences")
+}
+
+model OTPVerification {
+  id        String   @id @default(cuid())
+  identifier String  // email or phone
+  code      String
+  type      String   // email, phone
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  
+  @@map("otp_verifications")
+}
+
+model DietaryRestriction {
+  id     String @id @default(cuid())
+  userId String
+  type   String // vegan, vegetarian, gluten-free, halal, etc.
+  
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("dietary_restrictions")
+}
+
+model Allergy {
+  id     String @id @default(cuid())
+  userId String
+  type   String // nuts, dairy, shellfish, etc.
+  
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("allergies")
+}
+
+model FavoriteCuisine {
+  id     String @id @default(cuid())
+  userId String
+  type   String // italian, chinese, mexican, etc.
+  
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("favorite_cuisines")
+}
+
+model DishDietaryTag {
+  id     String @id @default(cuid())
+  dishId String
+  tag    String // vegan, vegetarian, gluten-free, etc.
+  
+  dish   Dish   @relation(fields: [dishId], references: [id], onDelete: Cascade)
+  
+  @@map("dish_dietary_tags")
+}
+
+model RestaurantCuisine {
+  id           String @id @default(cuid())
+  restaurantId String
+  cuisine      String // italian, chinese, mexican, etc.
+  
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  
+  @@map("restaurant_cuisines")
+}
+
+model DishIngredient {
+  id     String @id @default(cuid())
+  dishId String
+  name   String // tomato, cheese, pasta, etc.
+  
+  dish   Dish   @relation(fields: [dishId], references: [id], onDelete: Cascade)
+  
+  @@map("dish_ingredients")
+}
+
+// ============================================================================
+// CHAT SYSTEM MODELS
+// ============================================================================
+
+model ChatRoom {
+  id           String   @id @default(cuid())
+  type         String   // user_restaurant, user_user
+  user1Id      String
+  user2Id      String
+  restaurantId String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  user1        User       @relation("User1Chats", fields: [user1Id], references: [id])
+  user2        User       @relation("User2Chats", fields: [user2Id], references: [id])
+  restaurant   Restaurant? @relation(fields: [restaurantId], references: [id])
+  messages     Message[]
+  
+  @@map("chat_rooms")
+}
+
+model Message {
+  id            String   @id @default(cuid())
+  chatRoomId    String
+  senderId      String
+  content       String
+  messageType   String   @default("text") // text, image, file
+  isRead        Boolean  @default(false)
+  readAt        DateTime?
+  createdAt     DateTime @default(now())
+  
+  chatRoom      ChatRoom @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  sender        User     @relation("UserMessages", fields: [senderId], references: [id])
+  
+  @@map("messages")
+}
+
+// ============================================================================
+// ORDERING SYSTEM MODELS
+// ============================================================================
+
+model Order {
+  id              String   @id @default(cuid())
+  userId          String
+  restaurantId    String
+  dishId          String?
+  deliveryAddress String
+  totalAmount     Float
+  deliveryFee     Float
+  status          String   @default("pending") // pending, confirmed, preparing, ready, delivered, cancelled
+  paymentStatus   String   @default("pending") // pending, paid, failed, refunded
+  deliveryTime    DateTime?
+  estimatedTime   Int?     // in minutes
+  specialNotes    String?
+  thirdPartyId    String?  // Uber Eats, DoorDash order ID
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  user            User       @relation("UserOrders", fields: [userId], references: [id])
+  restaurant      Restaurant @relation("RestaurantOrders", fields: [restaurantId], references: [id])
+  dish            Dish?      @relation("DishOrders", fields: [dishId], references: [id])
+  orderItems      OrderItem[]
+  
+  @@map("orders")
+}
+
+model OrderItem {
+  id          String @id @default(cuid())
+  orderId     String
+  dishId      String
+  quantity    Int
+  price       Float
+  specialNotes String?
+  
+  order       Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  dish        Dish  @relation(fields: [dishId], references: [id])
+  
+  @@map("order_items")
+}
+
+// ============================================================================
+// RESERVATION SYSTEM MODELS
+// ============================================================================
+
+model Reservation {
+  id            String   @id @default(cuid())
+  userId        String
+  restaurantId  String
+  date          DateTime
+  partySize     Int
+  status        String   @default("pending") // pending, confirmed, cancelled, completed
+  specialNotes  String?
+  thirdPartyId  String?  // OpenTable, Resy reservation ID
+  confirmationCode String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  user          User       @relation("UserReservations", fields: [userId], references: [id])
+  restaurant    Restaurant @relation("RestaurantReservations", fields: [restaurantId], references: [id])
+  
+  @@map("reservations")
+}
+
+// ============================================================================
+// REFERRAL AND MARKETING MODELS
+// ============================================================================
+
+model ReferralCode {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  referrerId      String
+  discountAmount  Float    @default(5.00) // Fixed discount amount
+  discountType    String   @default("fixed") // fixed, percentage
+  maxUses         Int      @default(100)
+  currentUses     Int      @default(0)
+  expiresAt       DateTime?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  referrer        User     @relation("ReferrerCodes", fields: [referrerId], references: [id])
+  coupons         Coupon[]
+  
+  @@map("referral_codes")
+}
+
+model Coupon {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  userId          String
+  referralCodeId  String?
+  discountAmount  Float
+  discountType    String   // fixed, percentage, free_delivery
+  minOrderAmount  Float?
+  maxDiscountAmount Float?
+  isUsed          Boolean  @default(false)
+  usedAt          DateTime?
+  expiresAt       DateTime
+  createdAt       DateTime @default(now())
+  
+  user            User          @relation("UserCoupons", fields: [userId], references: [id])
+  referralCode    ReferralCode? @relation(fields: [referralCodeId], references: [id])
+  
+  @@map("coupons")
+}
+
+model ShareAction {
+  id            String   @id @default(cuid())
+  userId        String
+  dishId        String?
+  restaurantId  String?
+  shareType     String   // dish, restaurant, referral
+  platform      String   // whatsapp, twitter, facebook, copy_link
+  deepLink      String
+  clicks        Int      @default(0)
+  conversions   Int      @default(0) // Signups or orders from this share
+  createdAt     DateTime @default(now())
+  
+  user          User     @relation("UserShares", fields: [userId], references: [id])
+  dish          Dish?    @relation("SharedDishes", fields: [dishId], references: [id])
+  restaurant    Restaurant? @relation("SharedRestaurants", fields: [restaurantId], references: [id])
+  
+  @@map("share_actions")
+}
+
+model AnalyticsEvent {
+  id            String   @id @default(cuid())
+  userId        String?
+  eventType     String   // signup, login, first_order, share_clicked, conversion
+  eventName     String
+  properties    String?  // JSON string of event properties
+  value         Float?   // Numeric value (e.g., order amount)
+  currency      String?
+  campaignId    String?
+  referrerCode  String?
+  ipAddress     String?
+  userAgent     String?
+  createdAt     DateTime @default(now())
+  
+  @@map("analytics_events")
+}
